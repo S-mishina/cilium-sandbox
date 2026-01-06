@@ -1,0 +1,18 @@
+# Bandwidth-limited client pod for testing (1 Mbit/s limit)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: limited-client
+  namespace: demo
+  labels:
+    app: limited-client
+  annotations:
+    kubernetes.io/egress-bandwidth: "1M"
+    kubernetes.io/ingress-bandwidth: "1M"
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: cilium-lab-worker
+  containers:
+    - name: iperf3
+      image: networkstatic/iperf3
+      command: ["sleep", "infinity"]

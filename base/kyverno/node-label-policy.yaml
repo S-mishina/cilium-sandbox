@@ -1,0 +1,27 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: add-node-label-from-nodeselector
+  annotations:
+    policies.kyverno.io/title: Add Node Label from NodeSelector
+    policies.kyverno.io/description: >-
+      Adds a 'node' label to pods based on their nodeSelector.
+      This is used for Egress Gateway routing in Kind environments.
+spec:
+  rules:
+    - name: add-node-label
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      preconditions:
+        all:
+          - key: "{{ request.object.spec.nodeSelector.\"kubernetes.io/hostname\" || '' }}"
+            operator: NotEquals
+            value: ""
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            labels:
+              node: "{{ request.object.spec.nodeSelector.\"kubernetes.io/hostname\" }}"

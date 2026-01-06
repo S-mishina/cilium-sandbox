@@ -1,0 +1,14 @@
+# TLS certificates
+*.crt
+*.key
+*.pem
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# OS files
+.DS_Store
+
+# IDE
+.idea/
+.vscode/

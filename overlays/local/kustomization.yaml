@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# ローカル環境用のパッチ（必要に応じて追加）
+# patches:
+#   - path: patch-debug.yaml

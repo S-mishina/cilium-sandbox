@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+---
+# Client pod on worker node
+apiVersion: v1
+kind: Pod
+metadata:
+  name: client-worker
+  namespace: demo
+  labels:
+    app: client
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: cilium-lab-worker
+  containers:
+    - name: curl
+      image: curlimages/curl
+      command: ["sleep", "infinity"]
+---
+# Client pod on worker2 node
+apiVersion: v1
+kind: Pod
+metadata:
+  name: client-worker2
+  namespace: demo
+  labels:
+    app: client
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: cilium-lab-worker2
+  containers:
+    - name: curl
+      image: curlimages/curl
+      command: ["sleep", "infinity"]
+---
+# iperf3 server for bandwidth testing
+apiVersion: v1
+kind: Pod
+metadata:
+  name: iperf3-server
+  namespace: demo
+  labels:
+    app: iperf3-server
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: cilium-lab-worker2
+  containers:
+    - name: iperf3
+      image: networkstatic/iperf3
+      args: ["-s"]
+      ports:
+        - containerPort: 5201

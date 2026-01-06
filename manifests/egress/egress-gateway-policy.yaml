@@ -1,0 +1,68 @@
+# Per-node Egress Gateway Policies for Kind
+# In Kind, egress traffic must exit through the same node as the source pod
+# to avoid asymmetric routing issues.
+#
+# Kyverno automatically labels pods with `node: <node-name>` based on nodeSelector.
+---
+apiVersion: cilium.io/v2
+kind: CiliumEgressGatewayPolicy
+metadata:
+  name: egress-worker
+spec:
+  selectors:
+    - podSelector:
+        matchLabels:
+          app: client
+          node: cilium-lab-worker
+  destinationCIDRs:
+    - "0.0.0.0/0"
+  excludedCIDRs:
+    - "10.244.0.0/16"  # Pod CIDR
+    - "10.96.0.0/16"   # Service CIDR
+    - "172.19.0.0/16"  # Kind node network
+  egressGateway:
+    nodeSelector:
+      matchLabels:
+        kubernetes.io/hostname: cilium-lab-worker
+---
+apiVersion: cilium.io/v2
+kind: CiliumEgressGatewayPolicy
+metadata:
+  name: egress-worker2
+spec:
+  selectors:
+    - podSelector:
+        matchLabels:
+          app: client
+          node: cilium-lab-worker2
+  destinationCIDRs:
+    - "0.0.0.0/0"
+  excludedCIDRs:
+    - "10.244.0.0/16"  # Pod CIDR
+    - "10.96.0.0/16"   # Service CIDR
+    - "172.19.0.0/16"  # Kind node network
+  egressGateway:
+    nodeSelector:
+      matchLabels:
+        kubernetes.io/hostname: cilium-lab-worker2
+---
+apiVersion: cilium.io/v2
+kind: CiliumEgressGatewayPolicy
+metadata:
+  name: egress-control-plane
+spec:
+  selectors:
+    - podSelector:
+        matchLabels:
+          app: client
+          node: cilium-lab-control-plane
+  destinationCIDRs:
+    - "0.0.0.0/0"
+  excludedCIDRs:
+    - "10.244.0.0/16"  # Pod CIDR
+    - "10.96.0.0/16"   # Service CIDR
+    - "172.19.0.0/16"  # Kind node network
+  egressGateway:
+    nodeSelector:
+      matchLabels:
+        kubernetes.io/hostname: cilium-lab-control-plane
