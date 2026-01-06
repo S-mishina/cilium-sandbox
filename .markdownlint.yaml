@@ -1,0 +1,11 @@
+# markdownlint configuration
+default: true
+
+# Disable line length rule (too strict for documentation with code examples)
+MD013: false
+
+# Allow duplicate headings (like "Cleanup" in multiple sections)
+MD024: false
+
+# Allow code blocks without language specification
+MD040: false
