@@ -48,11 +48,11 @@ ingressController:
     insecureNodePort: 30000
     secureNodePort: 30443
 
-# Gateway API (hostNetwork mode)
+# Gateway API (NodePort mode)
 gatewayAPI:
   enabled: true
   hostNetwork:
-    enabled: true
+    enabled: false
 
 # Envoy security context (for privileged ports)
 envoy:

@@ -6,6 +6,24 @@ Learn how to expose services externally using Cilium Ingress Controller and Gate
 
 > **Note**: If you ran `make up`, Ingress Controller and Gateway API are already enabled. You can skip the enable steps and go directly to deploying resources.
 
+## Platform Differences
+
+| Item             | Kind                             | Minikube                    |
+| ---------------- | -------------------------------- | --------------------------- |
+| Ingress HTTP     | `localhost:40000`                | `<NODE_IP>:30000`           |
+| Ingress HTTPS    | `localhost:30443` (port-forward) | `<NODE_IP>:30443`           |
+| Gateway API mode | hostNetwork (port 30001)         | NodePort (dynamic port)     |
+| Gateway access   | `localhost:40001`                | `<NODE_IP>:<NodePort>`      |
+| Get Node IP      | N/A                              | `minikube ip -p cilium-lab` |
+
+### Minikube: Get Node IP
+
+```bash
+# Get node IP
+NODE_IP=$(minikube ip -p cilium-lab)
+echo $NODE_IP
+```
+
 ## 1. Verify Cilium Ingress Controller
 
 Ingress Controller is enabled by default with `make up`. Verify IngressClass is available:
@@ -35,6 +53,17 @@ backend-ingress   cilium   *                 80      5s
 ```
 
 Test access:
+
+```bash
+# Kind
+curl -s http://localhost:40000/get
+
+# Minikube
+NODE_IP=$(minikube ip -p cilium-lab)
+curl -s http://${NODE_IP}:30000/get
+```
+
+Example output (Kind):
 
 ```bash
  ❯ curl -s http://localhost:40000/get -v
@@ -78,7 +107,10 @@ Test access:
 
 Gateway API is the next generation of Ingress, providing more features and flexibility.
 
-> **Note**: This sandbox uses **hostNetwork mode** for Gateway API. The Gateway listener port (30001) is directly exposed on all nodes, accessible at `localhost:40001` via Kind port mappings.
+### Platform-specific Notes
+
+- **Kind**: Uses **hostNetwork mode**. The Gateway listener port (30001) is directly exposed on all nodes, accessible at `localhost:40001` via Kind port mappings.
+- **Minikube**: Uses **NodePort mode** with custom GatewayClass. Access via `<NODE_IP>:<NodePort>`.
 
 ### Verify Gateway API
 
@@ -90,27 +122,70 @@ NAME     CONTROLLER                     ACCEPTED   AGE
 cilium   io.cilium/gateway-controller   True       5m8s
 ```
 
+For Minikube, you'll also see a custom NodePort GatewayClass:
+
+```bash
+ ❯ kubectl get gatewayclass
+NAME              CONTROLLER                     ACCEPTED   AGE
+cilium            io.cilium/gateway-controller   True       5m
+cilium-nodeport   io.cilium/gateway-controller   False      5m
+```
+
+> **Note**: `cilium-nodeport` may show `ACCEPTED: False` due to a [known Cilium bug](https://github.com/cilium/cilium/issues/42956), but it still functions correctly.
+
 ### Deploy Gateway and HTTPRoute
 
 ```bash
+# Kind
 kubectl apply -f manifests/ingress/gateway.yaml
+
+# Minikube
+kubectl apply -f manifests/ingress/gateway-class-config.yaml
+kubectl apply -f overlays/minikube/gateway.yaml
+kubectl apply -f manifests/ingress/httproute.yaml
 ```
 
-See [gateway.yaml](../manifests/ingress/gateway.yaml) for details.
+See [gateway.yaml](../manifests/ingress/gateway.yaml) (Kind) or [overlays/minikube/gateway.yaml](../overlays/minikube/gateway.yaml) (Minikube) for details.
 
 Check Gateway status:
 
 ```bash
+# Kind
  ❯ kubectl get gateway -n demo
 NAME             CLASS    ADDRESS   PROGRAMMED   AGE
 cilium-gateway   cilium             True         5m
+
+# Minikube
+ ❯ kubectl get gateway -n demo
+NAME             CLASS             ADDRESS   PROGRAMMED   AGE
+cilium-gateway   cilium-nodeport             False        5m
 
  ❯ kubectl get httproute -n demo
 NAME            HOSTNAMES   AGE
 backend-route               5m11s
 ```
 
+For Minikube, check the Gateway Service NodePort:
+
+```bash
+ ❯ kubectl get svc -n demo cilium-gateway-cilium-gateway
+NAME                            TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
+cilium-gateway-cilium-gateway   NodePort   10.96.103.178   <none>        80:30374/TCP   5m
+```
+
 Test access:
+
+```bash
+# Kind
+curl -s http://localhost:40001/get
+
+# Minikube
+NODE_IP=$(minikube ip -p cilium-lab)
+NODE_PORT=$(kubectl get svc -n demo cilium-gateway-cilium-gateway -o jsonpath='{.spec.ports[0].nodePort}')
+curl -s http://${NODE_IP}:${NODE_PORT}/get
+```
+
+Example output (Kind):
 
 ```bash
  ❯ curl -s http://localhost:40001/get -v
@@ -160,6 +235,12 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -subj "/CN=backend.local"
 ```
 
+### Create TLS Secret
+
+```bash
+kubectl create secret tls backend-tls -n demo --cert=tls.crt --key=tls.key
+```
+
 ### Apply TLS Ingress
 
 ```bash
@@ -169,6 +250,17 @@ kubectl apply -f manifests/ingress/tls-ingress.yaml
 See [tls-ingress.yaml](../manifests/ingress/tls-ingress.yaml) for details.
 
 Test access:
+
+```bash
+# Kind
+curl --resolve backend.local:30443:127.0.0.1 -sk https://backend.local:30443/get
+
+# Minikube
+NODE_IP=$(minikube ip -p cilium-lab)
+curl --resolve backend.local:30443:${NODE_IP} -sk https://backend.local:30443/get
+```
+
+Example output (Kind):
 
 ```bash
  ❯ curl --resolve backend.local:30443:127.0.0.1 -v -sk https://backend.local:30443/get
@@ -237,5 +329,20 @@ In this chapter, you learned:
 - How to expose services with Ingress
 - How to use Gateway API for advanced routing
 - How to configure TLS termination
+
+## Platform Differences Summary
+
+| Item             | Kind                             | Minikube                         |
+| ---------------- | -------------------------------- | -------------------------------- |
+| Ingress HTTP     | `localhost:40000`                | `<NODE_IP>:30000`                |
+| Ingress HTTPS    | `localhost:30443`                | `<NODE_IP>:30443`                |
+| Gateway API mode | hostNetwork                      | NodePort                         |
+| GatewayClass     | `cilium`                         | `cilium-nodeport`                |
+| Gateway access   | `localhost:40001`                | `<NODE_IP>:<NodePort>` (dynamic) |
+| Gateway manifest | `manifests/ingress/gateway.yaml` | `overlays/minikube/gateway.yaml` |
+
+> **Known Issue**: Minikube's `cilium-nodeport` GatewayClass shows `ACCEPTED: False` due to a [Cilium bug](https://github.com/cilium/cilium/issues/42956). The Gateway still works correctly.
+>
+> **Feature Request**: Fixed NodePort for Gateway API is tracked in [CFP #43574](https://github.com/cilium/cilium/issues/43574).
 
 Next: [Chapter 5 - Egress Gateway](./chapter5-egress-gateway.md)

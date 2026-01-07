@@ -1,0 +1,23 @@
+# Egress Gateway Policy for Minikube
+# Unlike Kind, Minikube doesn't have asymmetric routing issues,
+# so we can use a single gateway node for all egress traffic.
+---
+apiVersion: cilium.io/v2
+kind: CiliumEgressGatewayPolicy
+metadata:
+  name: egress-gateway
+spec:
+  selectors:
+    - podSelector:
+        matchLabels:
+          app: client
+  destinationCIDRs:
+    - "0.0.0.0/0"
+  excludedCIDRs:
+    - "10.244.0.0/16"      # Pod CIDR
+    - "10.96.0.0/16"       # Service CIDR
+    - "192.168.105.0/24"   # Minikube node network
+  egressGateway:
+    nodeSelector:
+      matchLabels:
+        kubernetes.io/hostname: cilium-lab-m02

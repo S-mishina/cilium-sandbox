@@ -20,6 +20,15 @@ This is useful for:
 
 > **Kind Limitation**: In Kind environments, the egress gateway node must be the same node as the client pod. This is because all Kind nodes share the same Docker network, causing asymmetric routing when traffic returns via a different path. This sandbox uses per-node policies with Kyverno to automatically label pods based on their `nodeSelector`.
 
+## Platform Differences
+
+| Item              | Kind                           | Minikube                           |
+| ----------------- | ------------------------------ | ---------------------------------- |
+| Worker nodes      | `cilium-lab-worker`, `worker2` | `cilium-lab-m02`, `cilium-lab-m03` |
+| Control plane     | `cilium-lab-control-plane`     | `cilium-lab`                       |
+| Policy file       | `manifests/egress/...`         | `overlays/minikube/egress-...`     |
+| Node network CIDR | `172.19.0.0/16`                | `192.168.105.0/24`                 |
+
 ## 1. Verify Egress Gateway
 
 Egress Gateway is enabled by default with `make up`. Verify it's enabled:
@@ -33,35 +42,52 @@ proxy-xff-num-trusted-hops-egress                 0
 
 ## 2. Deploy Egress Gateway Policy
 
-Apply the Egress Gateway Policies (per-node approach for Kind):
+Apply the Egress Gateway Policy:
 
 ```bash
+# Kind (per-node approach due to asymmetric routing)
 kubectl apply -f manifests/egress/egress-gateway-policy.yaml
+
+# Minikube (single gateway - no asymmetric routing issues)
+kubectl apply -f overlays/minikube/egress-gateway-policy.yaml
 ```
 
-See [egress-gateway-policy.yaml](../manifests/egress/egress-gateway-policy.yaml) for details. The manifest contains three policies—one for each node. Each policy uses `podSelector` with a `node` label to match only pods on that specific node.
+See [egress-gateway-policy.yaml](../manifests/egress/egress-gateway-policy.yaml) (Kind) or [overlays/minikube/egress-gateway-policy.yaml](../overlays/minikube/egress-gateway-policy.yaml) (Minikube) for details.
 
 Check the policies:
 
 ```bash
+# Kind
  ❯ kubectl get ciliumegressgatewaypolicies
 NAME                   AGE
 egress-control-plane   5m
 egress-worker          5m
 egress-worker2         5m
+
+# Minikube
+ ❯ kubectl get ciliumegressgatewaypolicies
+NAME             AGE
+egress-gateway   5m
 ```
 
-## 3. Create a Pod with nodeSelector
+## 3. Create a Test Pod
 
-Kyverno automatically adds the `node` label based on `nodeSelector`. Create a pod with `nodeSelector`:
+> **Note**: If a `client` pod already exists with `app=client` label, you can skip this step.
 
 ```bash
+# Kind (nodeSelector required for per-node policy)
 kubectl run client -n demo --image=curlimages/curl --labels="app=client" \
   --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"cilium-lab-worker"}}}' \
   --command -- sleep infinity
+
+# Minikube (no nodeSelector needed)
+kubectl run client -n demo --image=curlimages/curl --labels="app=client" \
+  --command -- sleep infinity
 ```
 
-Verify the label was added automatically by Kyverno:
+### Kind Only: Verify Kyverno Label
+
+For Kind, verify the `node` label was added automatically by Kyverno:
 
 ```bash
  ❯ kubectl get pod -n demo client --show-labels
@@ -69,18 +95,29 @@ NAME     READY   STATUS    RESTARTS   AGE   LABELS
 client   1/1     Running   0          10s   app=client,node=cilium-lab-worker
 ```
 
-Verify BPF egress entries (Gateway IP should match the pod's node):
+> **Note**: This step is not needed for Minikube.
+
+## 4. Verify BPF Egress Entries
 
 ```bash
- ❯ kubectl exec -n kube-system daemonset/cilium -- cilium-dbg bpf egress list
-Source IP     Destination CIDR   Egress IP     Gateway IP
-10.244.1.26   10.96.0.0/16       172.19.0.11   Excluded CIDR
-10.244.1.26   10.244.0.0/16      172.19.0.11   Excluded CIDR
-10.244.1.26   172.19.0.0/16      172.19.0.11   Excluded CIDR
-10.244.1.26   0.0.0.0/0          172.19.0.11   172.19.0.11
+kubectl exec -n kube-system daemonset/cilium -- cilium-dbg bpf egress list
 ```
 
-## 4. Test Egress Gateway
+Example output:
+
+```bash
+# Kind
+Source IP     Destination CIDR   Egress IP     Gateway IP
+10.244.1.26   10.96.0.0/16       172.19.0.11   Excluded CIDR
+10.244.1.26   0.0.0.0/0          172.19.0.11   172.19.0.11
+
+# Minikube
+Source IP      Destination CIDR   Egress IP   Gateway IP
+10.244.1.230   10.96.0.0/16       0.0.0.0     Excluded CIDR
+10.244.1.230   0.0.0.0/0          0.0.0.0     192.168.105.24
+```
+
+## 5. Test Egress Gateway
 
 Test egress traffic from the client pod:
 
@@ -89,7 +126,7 @@ Test egress traffic from the client pod:
 123.218.107.11%
 ```
 
-## 5. Verify with Hubble
+## 6. Verify with Hubble
 
 Monitor egress traffic with Hubble:
 
@@ -104,7 +141,7 @@ Or use Hubble UI:
 cilium hubble ui
 ```
 
-## 6. Advanced: Egress IP Assignment
+## 7. Advanced: Egress IP Assignment
 
 You can assign a specific egress IP instead of using the node's IP:
 
@@ -123,16 +160,22 @@ spec:
   egressGateway:
     nodeSelector:
       matchLabels:
-        kubernetes.io/hostname: cilium-lab-worker
+        # Kind: cilium-lab-worker
+        # Minikube: cilium-lab-m02
+        kubernetes.io/hostname: <your-gateway-node>
     egressIP: 192.168.1.100  # Fixed egress IP
 ```
 
 > **Note**: The egress IP must be routable from the gateway node.
 
-## 7. Cleanup
+## 8. Cleanup
 
 ```bash
+# Kind
 kubectl delete -f manifests/egress/
+
+# Minikube
+kubectl delete -f overlays/minikube/egress-gateway-policy.yaml
 ```
 
 ## Summary
