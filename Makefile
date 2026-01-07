@@ -1,22 +1,60 @@
-.PHONY: help cluster-create cluster-delete cilium-install cilium-status coredns-config egress-gateway-setup clean
+.PHONY: help kind-create kind-delete minikube-create minikube-delete bootpd-enable bootpd-disable cilium-install cilium-status coredns-config clean
 
 CLUSTER_NAME ?= cilium-lab
 KIND_CONFIG := kind-config.yaml
-OVERLAY ?= local
+MINIKUBE_CONFIG := minikube-config.yaml
+MINIKUBE_DRIVER := $(shell yq '.driver' $(MINIKUBE_CONFIG))
+MINIKUBE_NETWORK := $(shell yq '.network' $(MINIKUBE_CONFIG))
+MINIKUBE_NODES := $(shell yq '.nodes' $(MINIKUBE_CONFIG))
+MINIKUBE_CPUS := $(shell yq '.cpus' $(MINIKUBE_CONFIG))
+MINIKUBE_MEMORY := $(shell yq '.memory' $(MINIKUBE_CONFIG))
+MINIKUBE_K8S_VERSION := $(shell yq '.["kubernetes-version"]' $(MINIKUBE_CONFIG))
+OVERLAY ?= kind
 
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-25s\033[0m %s\n", $$1, $$2}'
 
 # =============================================================================
 # Kind Cluster
 # =============================================================================
 
-cluster-create: ## Create kind cluster for Cilium
+kind-create: ## Create kind cluster for Cilium
 	kind create cluster --name $(CLUSTER_NAME) --config $(KIND_CONFIG)
-	@echo "Cluster $(CLUSTER_NAME) created!"
+	@echo "Kind cluster $(CLUSTER_NAME) created!"
 
-cluster-delete: ## Delete kind cluster
+kind-delete: ## Delete kind cluster
 	kind delete cluster --name $(CLUSTER_NAME)
+
+# =============================================================================
+# Minikube Cluster
+# =============================================================================
+
+bootpd-enable: ## Enable bootpd in firewall (required for socket_vmnet)
+	@echo "Enabling bootpd in firewall..."
+	sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add /usr/libexec/bootpd
+	sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblock /usr/libexec/bootpd
+	@echo "bootpd enabled!"
+
+bootpd-disable: ## Disable bootpd in firewall
+	@echo "Disabling bootpd in firewall..."
+	sudo /usr/libexec/ApplicationFirewall/socketfilterfw --remove /usr/libexec/bootpd
+	@echo "bootpd removed from firewall!"
+
+minikube-create: ## Create minikube cluster for Cilium (VM driver)
+	minikube start \
+		--driver=$(MINIKUBE_DRIVER) \
+		--network=$(MINIKUBE_NETWORK) \
+		--nodes=$(MINIKUBE_NODES) \
+		--cpus=$(MINIKUBE_CPUS) \
+		--memory=$(MINIKUBE_MEMORY) \
+		--kubernetes-version=$(MINIKUBE_K8S_VERSION) \
+		--cni=false \
+		--network-plugin=cni \
+		--profile=$(CLUSTER_NAME)
+	@echo "Minikube cluster $(CLUSTER_NAME) created!"
+
+minikube-delete: ## Delete minikube cluster
+	minikube delete --profile=$(CLUSTER_NAME)
 
 # =============================================================================
 # Cilium (Helm)
@@ -34,10 +72,10 @@ gateway-crds: ## Install Gateway API CRDs
 	kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_grpcroutes.yaml
 	kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/experimental/gateway.networking.k8s.io_tlsroutes.yaml
 
-cilium-install: cilium-repo gateway-crds ## Install Cilium via Helm
+cilium-install: cilium-repo gateway-crds ## Install Cilium via Helm (use OVERLAY=kind or OVERLAY=minikube)
 	helm install cilium cilium/cilium --version 1.18.5 \
 		--namespace kube-system \
-		-f base/cilium/values.yaml
+		-f overlays/$(OVERLAY)/cilium-values.yaml
 	cilium status --wait
 	@echo "Restarting cilium-operator for GatewayClass registration..."
 	kubectl rollout restart deployment/cilium-operator -n kube-system
@@ -63,10 +101,10 @@ cilium-connectivity-test: ## Run Cilium connectivity test
 # Ingress / Gateway API
 # =============================================================================
 
-cilium-upgrade: ## Upgrade Cilium with values.yaml
+cilium-upgrade: ## Upgrade Cilium with values.yaml (use OVERLAY=kind or OVERLAY=minikube)
 	helm upgrade cilium cilium/cilium --version 1.18.5 \
 		--namespace kube-system \
-		-f base/cilium/values.yaml
+		-f overlays/$(OVERLAY)/cilium-values.yaml
 	kubectl rollout restart deployment/cilium-operator -n kube-system
 	kubectl rollout status deployment/cilium-operator -n kube-system --timeout=120s
 	cilium status --wait
@@ -104,28 +142,58 @@ coredns-config: ## Configure CoreDNS for external DNS (8.8.8.8)
 	@echo "CoreDNS configured with external DNS (8.8.8.8)"
 
 # =============================================================================
-# Egress Gateway
+# Kyverno / Demo Pods
 # =============================================================================
 
 kyverno-install: ## Install Kyverno for policy management
 	helm repo add kyverno https://kyverno.github.io/kyverno/ || true
 	helm repo update
 	helm install kyverno kyverno/kyverno -n kyverno --create-namespace -f base/kyverno/values.yaml
-	kubectl rollout status deployment/kyverno-admission-controller -n kyverno --timeout=120s
+	kubectl rollout status deployment/kyverno-admission-controller -n kyverno --timeout=300s
 	kubectl apply -f base/kyverno/node-label-policy.yaml
 	@echo "Kyverno installed with node-label policy!"
 
-demo-pods: ## Deploy demo client pods on each node
+demo-pods: ## Deploy demo client pods on each node (use OVERLAY=kind or OVERLAY=minikube)
+ifeq ($(OVERLAY),minikube)
+	kubectl apply -k overlays/minikube
+else
 	kubectl apply -f manifests/demo/demo-pods.yaml
+endif
 	kubectl wait --for=condition=Ready pod -l app=client -n demo --timeout=60s
 	@echo "Demo pods ready!"
 
 # =============================================================================
-# All-in-one
+# All-in-one (Kind)
 # =============================================================================
 
-up: cluster-create cilium-install coredns-config kyverno-install demo-pods ## Create cluster + Install Cilium + Kyverno + Demo pods
-	@echo "Cilium lab is ready!"
+kind-up: kind-create ## Create kind cluster + Install Cilium + Kyverno + Demo pods
+	$(MAKE) cilium-install OVERLAY=kind
+	$(MAKE) coredns-config
+	$(MAKE) kyverno-install
+	$(MAKE) demo-pods OVERLAY=kind
+	@echo "Kind Cilium lab is ready!"
 
-down: cluster-delete ## Delete everything
-	@echo "Cluster deleted"
+kind-down: kind-delete ## Delete kind cluster
+	@echo "Kind cluster deleted"
+
+# =============================================================================
+# All-in-one (Minikube)
+# =============================================================================
+
+minikube-up: bootpd-enable minikube-create ## Create minikube cluster + Install Cilium + Kyverno + Demo pods
+	$(MAKE) cilium-install OVERLAY=minikube
+	$(MAKE) kyverno-install
+	$(MAKE) demo-pods OVERLAY=minikube
+	@echo "Minikube Cilium lab is ready!"
+
+minikube-down: minikube-delete bootpd-disable ## Delete minikube cluster
+	@echo "Minikube cluster deleted"
+
+# =============================================================================
+# Legacy aliases (backward compatibility)
+# =============================================================================
+
+cluster-create: kind-create ## (Alias) Create kind cluster
+cluster-delete: kind-delete ## (Alias) Delete kind cluster
+up: kind-up ## (Alias) Same as kind-up
+down: kind-down ## (Alias) Same as kind-down

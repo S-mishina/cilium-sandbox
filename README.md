@@ -1,20 +1,22 @@
 # Cilium Sandbox
 
-A Kind-based environment for learning Cilium.
+A Kind/Minikube-based environment for learning Cilium.
 
 ## Prerequisites
 
 - Docker
-- kind
+- kind or minikube
 - kubectl
 - helm
 - cilium CLI
 
 ## Quick Start
 
+### Kind (default)
+
 ```bash
 # Create cluster + Install Cilium
-make up
+make kind-up
 
 # Check status
 make cilium-status
@@ -23,10 +25,45 @@ make cilium-status
 make hubble-ui
 
 # Delete cluster
-make down
+make kind-down
 ```
 
-## Port Mappings
+### Minikube (VM driver)
+
+```bash
+# Create cluster + Install Cilium (default: qemu2)
+make minikube-up
+
+# Use different VM driver
+make minikube-up MINIKUBE_DRIVER=virtualbox
+
+# Check status
+make cilium-status
+
+# Open Hubble UI
+make hubble-ui
+
+# Delete cluster
+make minikube-down
+```
+
+## Project Structure
+
+```
+.
+├── overlays/
+│   ├── kind/
+│   │   └── cilium-values.yaml   # Kind Cilium settings
+│   └── minikube/
+│       └── cilium-values.yaml   # Minikube Cilium settings
+├── base/
+│   └── kyverno/                 # Kyverno settings
+├── kind-config.yaml             # Kind cluster config
+├── minikube-config.yaml         # Minikube cluster config
+└── Makefile
+```
+
+## Port Mappings (Kind)
 
 | Purpose           | Host  | Container | Notes            |
 | ----------------- | ----- | --------- | ---------------- |

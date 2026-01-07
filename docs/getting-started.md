@@ -2,10 +2,12 @@
 
 ## Overview
 
-This sandbox provides a 3-node Kind cluster with Cilium installed:
+This sandbox provides a Kubernetes cluster with Cilium installed. You can choose between Kind or Minikube:
 
-- 1 control-plane
-- 2 workers
+| Platform | Nodes                       | Use Case            |
+| -------- | --------------------------- | ------------------- |
+| Kind     | 1 control-plane + 2 workers | Quick local testing |
+| Minikube | Single node (VM)            | VM-based testing    |
 
 ## Official Documentation
 
@@ -16,10 +18,10 @@ This sandbox provides a 3-node Kind cluster with Cilium installed:
 
 ## Installation
 
-### 1. Create Cluster and Install Cilium
+### Option 1: Kind (Recommended)
 
 ```bash
-make up
+make kind-up
 ```
 
 This command:
@@ -27,8 +29,26 @@ This command:
 1. Creates a Kind cluster with CNI disabled
 1. Adds Cilium Helm repository
 1. Installs Cilium with Hubble enabled
+1. Installs Kyverno and demo pods
 
-### 2. Verify Installation
+### Option 2: Minikube (VM driver)
+
+```bash
+# Default driver: qemu2
+make minikube-up
+
+# Or specify a different VM driver
+make minikube-up MINIKUBE_DRIVER=virtualbox
+```
+
+This command:
+
+1. Creates a Minikube cluster with VM driver (CNI disabled)
+1. Adds Cilium Helm repository
+1. Installs Cilium with Hubble enabled
+1. Installs Kyverno and demo pods
+
+## Verify Installation
 
 ```bash
 make cilium-status
@@ -68,5 +88,21 @@ make hubble-ui
 ## Cleanup
 
 ```bash
-make down
+# Kind
+make kind-down
+
+# Minikube
+make minikube-down
+```
+
+## Manual Cilium Installation
+
+If you need to install Cilium separately:
+
+```bash
+# For Kind
+make cilium-install OVERLAY=kind
+
+# For Minikube
+make cilium-install OVERLAY=minikube
 ```

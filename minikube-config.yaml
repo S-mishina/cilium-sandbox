@@ -1,0 +1,12 @@
+# Minikube cluster configuration
+# Usage: minikube start --driver=qemu2 ...
+
+# Recommended minikube settings for Cilium
+driver: qemu2
+network: socket_vmnet
+nodes: 3
+cpus: 2
+memory: 4096
+kubernetes-version: v1.31
+cni: false
+network-plugin: cni

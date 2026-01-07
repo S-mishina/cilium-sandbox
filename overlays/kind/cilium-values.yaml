@@ -1,10 +1,13 @@
-# Cilium Helm values for kind cluster
+# Cilium Helm values for Kind cluster
 # https://docs.cilium.io/en/stable/helm-reference/
+#
+# TODO: Move common settings to base once kustomize helmCharts supports Helm v4
+# https://github.com/kubernetes-sigs/kustomize/issues/6013
 
-# kube-proxy replacement (kindでkubeProxyMode: noneにしたため必須)
+# kube-proxy replacement (required when kubeProxyMode: none in kind config)
 kubeProxyReplacement: true
 
-# kind用の設定
+# Kind API Server settings
 k8sServiceHost: cilium-lab-control-plane
 k8sServicePort: 6443
 
@@ -16,22 +19,22 @@ hubble:
   ui:
     enabled: true
 
-# L7 proxy (Istio的なL7機能を使う場合)
+# L7 proxy
 l7Proxy: true
 
-# eBPF設定
+# eBPF settings
 bpf:
   masquerade: true
 
-# IPAM設定
+# IPAM settings
 ipam:
   mode: kubernetes
 
-# Operator設定
+# Operator settings
 operator:
-  replicas: 1  # kind用に1に削減
+  replicas: 1
 
-# デバッグ用（学習時に便利）
+# Debug
 debug:
   enabled: false
 
@@ -50,7 +53,7 @@ gatewayAPI:
   hostNetwork:
     enabled: true
 
-# Envoy security context (privileged ports用)
+# Envoy security context (for privileged ports)
 envoy:
   securityContext:
     capabilities:

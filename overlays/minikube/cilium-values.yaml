@@ -1,0 +1,77 @@
+# Cilium Helm values for Minikube cluster
+# https://docs.cilium.io/en/stable/helm-reference/
+#
+# TODO: Move common settings to base once kustomize helmCharts supports Helm v4
+# https://github.com/kubernetes-sigs/kustomize/issues/6013
+
+# kube-proxy replacement
+kubeProxyReplacement: true
+
+# API Server settings are auto-detected in minikube
+
+# Hubble (observability)
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+    service:
+      type: NodePort
+      nodePort: 31245
+  ui:
+    enabled: true
+
+# L7 proxy
+l7Proxy: true
+
+# eBPF settings
+bpf:
+  masquerade: true
+
+# IPAM settings
+ipam:
+  mode: kubernetes
+
+# Operator settings
+operator:
+  replicas: 1
+
+# Debug
+debug:
+  enabled: false
+
+# Ingress Controller
+ingressController:
+  enabled: true
+  loadbalancerMode: shared
+  service:
+    type: NodePort
+    insecureNodePort: 30000
+    secureNodePort: 30443
+
+# Gateway API (hostNetwork mode)
+gatewayAPI:
+  enabled: true
+  hostNetwork:
+    enabled: true
+
+# Envoy security context (for privileged ports)
+envoy:
+  securityContext:
+    capabilities:
+      keepCapNetBindService: true
+
+# Egress Gateway
+egressGateway:
+  enabled: true
+
+# WireGuard Encryption
+# NOTE: Disabled for minikube - kernel doesn't have CONFIG_WIREGUARD
+# To enable, build custom minikube ISO with WireGuard kernel module
+# See: https://minikube.sigs.k8s.io/docs/contrib/building/iso/
+encryption:
+  enabled: false
+  # type: wireguard
+
+# Bandwidth Manager
+bandwidthManager:
+  enabled: true

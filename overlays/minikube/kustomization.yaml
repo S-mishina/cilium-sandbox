@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../manifests/demo
+
+patches:
+  # Worker nodes only (not control plane)
+  - target:
+      kind: Pod
+      name: client-worker
+    patch: |-
+      - op: replace
+        path: /spec/nodeSelector/kubernetes.io~1hostname
+        value: cilium-lab-m02
+  - target:
+      kind: Pod
+      name: client-worker2
+    patch: |-
+      - op: replace
+        path: /spec/nodeSelector/kubernetes.io~1hostname
+        value: cilium-lab-m03
+  - target:
+      kind: Pod
+      name: iperf3-server
+    patch: |-
+      - op: replace
+        path: /spec/nodeSelector/kubernetes.io~1hostname
+        value: cilium-lab-m03
