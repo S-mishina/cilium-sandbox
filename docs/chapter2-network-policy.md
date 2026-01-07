@@ -4,9 +4,42 @@ Learn how to control traffic with Kubernetes NetworkPolicy.
 
 **Official Documentation**: [Network Policy](https://docs.cilium.io/en/stable/security/policy/language/#layer-3-examples)
 
+## Prerequisites
+
+### Kind
+
+```bash
+# Hubble port-forward (run in background)
+cilium hubble port-forward &
+```
+
+### Minikube
+
+```bash
+# Option 1: Port-forward
+cilium hubble port-forward &
+
+# Option 2: NodePort (if configured in cilium-values.yaml)
+# Get node IP
+kubectl get nodes -o wide
+# Use: hubble observe --server <NODE_IP>:31245 ...
+```
+
+> **Note**: If kubeconfig is stale, run: `minikube update-context -p cilium-lab`
+
 ## 1. Verify Current State (No Policy)
 
 First, confirm that all traffic is allowed:
+
+```bash
+# Kind
+kubectl exec -n demo client -- curl -s backend/get
+
+# Minikube
+kubectl exec -n demo client-worker -- curl -s backend/get
+```
+
+Example output:
 
 ```bash
  ❯ kubectl exec -n demo client -- curl -s backend/get
@@ -57,7 +90,16 @@ See [deny-all-ingress.yaml](../manifests/network-policies/deny-all-ingress.yaml)
 Try the same request:
 
 ```bash
- ❯ kubectl exec -n demo client -- curl -s --max-time 5 backend/get
+# Kind
+kubectl exec -n demo client -- curl -s --max-time 5 backend/get
+
+# Minikube
+kubectl exec -n demo client-worker -- curl -s --max-time 5 backend/get
+```
+
+Expected output:
+
+```bash
 command terminated with exit code 28
 ```
 
@@ -94,6 +136,16 @@ kubectl apply -f manifests/network-policies/allow-client-to-backend.yaml
 See [allow-client-to-backend.yaml](../manifests/network-policies/allow-client-to-backend.yaml) for details.
 
 ## 5. Verify Traffic is Restored
+
+```bash
+# Kind
+kubectl exec -n demo client -- curl -s backend/get
+
+# Minikube
+kubectl exec -n demo client-worker -- curl -s backend/get
+```
+
+Example output:
 
 ```bash
  ❯ kubectl exec -n demo client -- curl -s backend/get
@@ -144,5 +196,14 @@ In this chapter, you learned:
 - How to apply a default deny policy
 - How to verify blocked traffic with Hubble
 - How to allow specific traffic with NetworkPolicy
+
+## Platform Differences
+
+| Item           | Kind                         | Minikube                                |
+| -------------- | ---------------------------- | --------------------------------------- |
+| Client pod     | `client`                     | `client-worker` / `client-worker2`      |
+| Hubble access  | `cilium hubble port-forward` | Port-forward or NodePort (31245)        |
+| Node names     | `cilium-lab-worker`          | `cilium-lab-m02` / `cilium-lab-m03`     |
+| Context update | N/A                          | `minikube update-context -p cilium-lab` |
 
 Next: [Chapter 3 - Cilium Network Policy](./chapter3-cilium-network-policy.md)
